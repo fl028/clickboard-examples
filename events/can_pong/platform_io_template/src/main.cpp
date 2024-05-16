@@ -2,12 +2,14 @@
 #include <CAN.h>
 
 #define BACKUP_SIZE 5
+#define CENTER_OFFSET_PADDLE 10
+#define CENTER_OFFSET_BALL 3
 
 // Variables
 
 // Player 1 = 0x02, Player 2 = 0x03
-long PLAYER = 0x02;
-long OPPONENT = PLAYER = 0x02 ? 0x03 : 0x02;
+long PLAYER = 0x03;
+long OPPONENT = (PLAYER == 0x02) ? 0x03 : 0x02;
 
 // Array of the last 5 received CAN data sets containing x, y, and state
 uint8_t dataBackup[BACKUP_SIZE][2];
@@ -91,9 +93,6 @@ void onReceiveFunction(int packetSize) {
 
     uint8_t data[3];  // Array to store received data
 
-    Serial.print("Received packet with size: ");
-    Serial.println(packetSize);
-
     // Read the data from the CAN packet
     int i = 0;
     while (CAN.available() && i < 3) {
@@ -123,7 +122,7 @@ void onReceiveFunction(int packetSize) {
       Serial.print(" ");
     }
     Serial.println();
-    Serial.println();
+
 
     // Print the content of dataBackup
     Serial.println("Data Backup:");
@@ -142,11 +141,13 @@ void onReceiveFunction(int packetSize) {
       Serial.println();
     }
   }
+  Serial.println();
 }
 
 // Send Packets
 void sendUpdate(int8_t direction) {
 
+  // Check if paddle is in bounds
   if (PADDLE_POS + direction > 130 || PADDLE_POS + direction < 0) {
     return;
   }
@@ -160,33 +161,25 @@ void sendUpdate(int8_t direction) {
 
 // React to Update
 void reactToUpdate() {
-  switch (GAME_STATE)
-  {
-  case 0:
-    resetGame();
-    break;
-  case 1:
-    movePaddle();
-    break;
-  case 2:
-    handleScore();
-    break;
-  case 3:
-    handleScore();
-    break;
-  case 4:
-    handleScore();
-    break;
-  case 5:
-    resetGame();
-    break;
-  case 6:
-    resetGame();
-    break;
-  case 7:
-    resetGame();
-  default:
-    break;
+  switch (GAME_STATE) {
+    case 0:
+      resetGame();
+      break;
+    case 1:
+      movePaddle();
+      break;
+    case 2:
+    case 3:
+    case 4:
+      handleScore();
+      break;
+    case 5:
+    case 6:
+    case 7:
+      resetGame();
+      break;
+    default:
+      break;
   }
 }
 
@@ -208,8 +201,23 @@ void handleScore() {
 void movePaddle() {
   Serial.print("Called: MovePaddle");
   // Calculate Vector
-  int v_x =  dataBackup[dataIndex][0] - dataBackup[(dataIndex - 1) % BACKUP_SIZE][0]; //v_x > 0 => move right, v_x < 0 => move left
-  int v_y =  dataBackup[dataIndex][1] - dataBackup[(dataIndex - 1) % BACKUP_SIZE][1];
+  int prevIndex = (dataIndex - 1 + BACKUP_SIZE) % BACKUP_SIZE;
+  int v_x =  dataBackup[dataIndex][0] - dataBackup[prevIndex][0]; //v_x > 0 => move right, v_x < 0 => move left
+  //int v_y =  dataBackup[dataIndex][1] - dataBackup[(dataIndex - 1) % BACKUP_SIZE][1];
+
+  // Output index & prevIndex
+  Serial.print("dataIndex: ");
+  Serial.println(dataIndex);
+  Serial.print("prevIndex: ");
+  Serial.println(prevIndex);
+
+
+
+  Serial.print("v_x: ");
+  Serial.println(v_x);
+
+  int y = dataBackup[dataIndex][1] + CENTER_OFFSET_BALL;
+  int paddlePosOffset = PADDLE_POS + CENTER_OFFSET_PADDLE;
 
   // nach rechts und Player i = Ball geht weg von uns
   if (PLAYER == 0x02) {
@@ -219,28 +227,26 @@ void movePaddle() {
     }
     else {
       Serial.println("Ball goes to Player 1");
-      int y = dataBackup[dataIndex][1];
-      if (y > PADDLE_POS) {
+      if (y > paddlePosOffset) {
         sendUpdate(1);
       }
-      else if (y < PADDLE_POS) {
+      else if (y < paddlePosOffset) {
         sendUpdate(-1);
       }
     }
   }
   else{
-    if (v_x > 0) {
-      Serial.println("Ball goes to Player 2");
-      int y = dataBackup[dataIndex][1];
-      if (y > PADDLE_POS_OPPONENT) {
+    if (v_x < 0) {
+      Serial.println("Ball goes TO US");
+      if (y > paddlePosOffset) {
         sendUpdate(1);
       }
-      else if (y < PADDLE_POS_OPPONENT) {
+      else if (y < paddlePosOffset) {
         sendUpdate(-1);
       }
     }
     else {
-      Serial.println("Ball goes away from Player 2");
+      Serial.println("Ball goes AWAY FROM US");
       moveToCenter();
     }
   }
