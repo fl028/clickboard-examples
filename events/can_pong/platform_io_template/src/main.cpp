@@ -42,7 +42,7 @@ uint8_t PADDLE_POS = PADDLE_POS_DEFAULT;
 uint8_t PADDLE_POS_OPPONENT = PADDLE_POS_DEFAULT;
 
 // Predicted Ball Position
-uint16_t predictedY;
+uint16_t predictedY = 300;
 
 // Prototypes
 void onReceiveFunction(int packetSize);
@@ -81,7 +81,7 @@ void setup() {
 }
 
 void loop() {
-  // do nothing
+
 }
 
 
@@ -98,12 +98,10 @@ void onReceiveFunction(int packetSize) {
       uint8_t direction = CAN.read();
       if (PADDLE_POS_OPPONENT + direction > 130 || PADDLE_POS_OPPONENT + direction < 0) return;
       PADDLE_POS_OPPONENT += direction;
-      Serial.print("Paddle Position Opponent: ");
-      Serial.println(PADDLE_POS_OPPONENT);
+      // Serial.print("Paddle Position Opponent: ");
+      // Serial.println(PADDLE_POS_OPPONENT);
       return;
     }
-
-    Serial.println();
 
     // Array to store received data
     uint8_t data[3];  
@@ -117,6 +115,10 @@ void onReceiveFunction(int packetSize) {
     
     // Update GAME_STATE
     GAME_STATE = data[2];
+    if (data[2] != GAME_STATE) {
+      Serial.print("GAME_STATE: ");
+      Serial.println(GAME_STATE);
+    }
 
     if (GAME_STATE != 1){
       resetBuffer();
@@ -126,15 +128,16 @@ void onReceiveFunction(int packetSize) {
     for (int j = 0; j < 2; j++) {
       dataBackup[dataIndex][j] = data[j];
     }
-    // Update the index for circular buffer
-    dataIndex = (dataIndex + 1) % BACKUP_SIZE;
+    
 
     // Print the received data
-    dumpData(data, i);
-    dumpBuffer();
+    //dumpData(data, i);
+    //dumpBuffer();
 
     // React to Update
     reactToUpdate();
+    // Update the index for circular buffer
+    dataIndex = (dataIndex + 1) % BACKUP_SIZE;
   }
 }
 
@@ -142,7 +145,7 @@ void onReceiveFunction(int packetSize) {
 void dumpData(uint8_t (&data)[3], int i) {
       Serial.print("Data: ");
     for (int j = 0; j < i; j++) {
-      Serial.print(data[j], HEX);  // Print data in hexadecimal format
+      Serial.print(data[j]);  // Print data in hexadecimal format
       Serial.print(" ");
     }
     Serial.println();
@@ -209,21 +212,29 @@ void reactToUpdate() {
 
 // Reset Game
 void resetGame() {
-  Serial.println("Called: ResetGame");
+  //Serial.println("Called: ResetGame");
   PADDLE_POS = PADDLE_POS_DEFAULT;
   PADDLE_POS_OPPONENT = PADDLE_POS_DEFAULT;
   GAME_STATE = 0;
+  predictedY = 300;
 }
 
 // Handle Score
 void handleScore() {
   Serial.println("Called: HandleScore");
+  Serial.print("Predicted Y: ");
+  Serial.println(predictedY);
+  Serial.print(", Actual Y: ");
+  Serial.print(dataBackup[dataIndex][1]);
+  Serial.print(", Paddle Pos: ");
+  Serial.println(PADDLE_POS);
+  predictedY = 300;
   moveToCenter();
 }
 
 // Move Paddle
 void movePaddle() {
-  Serial.println("Called: MovePaddle");
+  //Serial.println("Called: MovePaddle");
   // Calculate Vector components
   int prevIndex = (dataIndex - 1 + BACKUP_SIZE) % BACKUP_SIZE;
   int x = dataBackup[dataIndex][0];
@@ -237,18 +248,18 @@ void movePaddle() {
   // Serial.print(", prevIndex: ");
   // Serial.println(prevIndex);
 
-  Serial.print("v_x: ");
-  Serial.print(v_x);
-  Serial.print(", v_y: ");
-  Serial.println(v_y);
+  // Serial.print("v_x: ");
+  // Serial.print(v_x);
+  // Serial.print(", v_y: ");
+  // Serial.println(v_y);
 
   int paddlePos_Offset = PADDLE_POS + CENTER_OFFSET_PADDLE;
 
   // nach rechts und Player i = Ball geht weg von uns
-  if ((PLAYER == 0x02 && v_x < 0) || (PLAYER == 0x03 && v_x > 0)) {
+  if ((PLAYER == 0x02 && v_x > 0) || (PLAYER == 0x03 && v_x < 0)) {
     if (predictedY != 300) {
       // Compare predictedY and actualY 
-      Serial.println("Ball goes away from us");
+      Serial.println("Ball goes away from us: " + PLAYER);
       Serial.print("predictedY: ");
       Serial.print(predictedY + CENTER_OFFSET_BALL);
       Serial.print(", actualY: ");
@@ -260,8 +271,9 @@ void movePaddle() {
     }
     moveToCenter();
   } else {
+    // Ball goes towards us
     if (predictedY == 300){
-      Serial.println("Ball goes towards us");
+      Serial.println("Ball goes towards us: ");
       predictBallPosition(x, y, v_x, v_y);
     }
     if ((predictedY + CENTER_OFFSET_BALL) > paddlePos_Offset) {
@@ -298,24 +310,64 @@ void moveToCenter() {
 
 // Predict Ball Position
 void predictBallPosition(int x, int y, int v_x, int v_y) {
+  // Print current and previous ball position
+  int prevIndex = (dataIndex - 1 + BACKUP_SIZE) % BACKUP_SIZE;
+  Serial.print("Previous Ball Position: ");
+  Serial.print(dataBackup[prevIndex][0]);
+  Serial.print(", ");
+  Serial.println(dataBackup[prevIndex][1]);
+
+  Serial.print("Current Ball Position: ");
+  Serial.print(x);
+  Serial.print(", ");
+  Serial.println(y);
+
+  // Print velocity
+  Serial.print("Velocity: ");
+  Serial.print(v_x);
+  Serial.print(", ");
+  Serial.println(v_y);
+
   // Ensure v_x is not zero to prevent division by zero
   if (v_x == 0) {
-    predictedY = y;
+    predictedY = 300;
     return;
   }
 
   // Time to reach our paddle
-  int timeToReachPaddle = (PLAYER == 0x02) ? x / abs(v_x) : (FIELD_WIDTH - PADDLE_WIDTH - x) / abs(v_x);
+  int timeToReachPaddle = (PLAYER == 0x02) ? (x - PADDLE_WIDTH) / abs(v_x) : (FIELD_WIDTH - PADDLE_WIDTH - x - 2*CENTER_OFFSET_BALL) / abs(v_x);
+
+  // Print time to reach paddle
+  Serial.print("Time to reach paddle: ");
+  Serial.println(timeToReachPaddle);
 
   // Calculate the predicted Y position based on time and velocity
   int predictedYInt = y + v_y * timeToReachPaddle;
 
+  // Print predicted Y position
+  Serial.print("Predicted Y RAW: ");
+  Serial.println(predictedYInt);
+
   // Calculate the number of bounces
-  int bounces = predictedYInt / FIELD_HEIGHT;
+  int bounces = predictedYInt < 0 ? 1+ abs(predictedYInt) / FIELD_HEIGHT : predictedYInt / FIELD_HEIGHT;
+  Serial.print("Bounces: ");
+  Serial.println(bounces);
+
+  // Calculate top bounces
+  // int topBounces = (bounces+1) / 2;
+  // int bonceOffset = topBounces * 2 * CENTER_OFFSET_BALL;
+  // predictedYInt = y + v_y * (timeToReachPaddle - bonceOffset);
+
   if (bounces % 2 == 0) {
-    predictedYInt = predictedYInt % FIELD_HEIGHT;
+    predictedYInt = predictedYInt < 0 ? FIELD_HEIGHT - abs(predictedYInt % FIELD_HEIGHT) : (predictedYInt % FIELD_HEIGHT);
   } else {
-    predictedYInt = FIELD_HEIGHT - (predictedYInt % FIELD_HEIGHT);
+    predictedYInt =  predictedYInt < 0 ? abs(predictedYInt % FIELD_HEIGHT) : FIELD_HEIGHT - abs(predictedYInt % FIELD_HEIGHT);
   }
+
   predictedY = predictedYInt;
+  Serial.print("Predicted Y: ");
+  Serial.println(predictedY);
+  Serial.println();
+  Serial.println();
+  
 }
