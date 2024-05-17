@@ -115,10 +115,10 @@ void onReceiveFunction(int packetSize) {
     
     // Update GAME_STATE
     GAME_STATE = data[2];
-    if (data[2] != GAME_STATE) {
-      Serial.print("GAME_STATE: ");
-      Serial.println(GAME_STATE);
-    }
+    // if (data[2] != GAME_STATE) {
+    //   Serial.print("GAME_STATE: ");
+    //   Serial.println(GAME_STATE);
+    // }
 
     if (GAME_STATE != 1){
       resetBuffer();
@@ -221,13 +221,13 @@ void resetGame() {
 
 // Handle Score
 void handleScore() {
-  Serial.println("Called: HandleScore");
-  Serial.print("Predicted Y: ");
-  Serial.println(predictedY);
-  Serial.print(", Actual Y: ");
-  Serial.print(dataBackup[dataIndex][1]);
-  Serial.print(", Paddle Pos: ");
-  Serial.println(PADDLE_POS);
+  // Serial.println("Called: HandleScore");
+  // Serial.print("Predicted Y: ");
+  // Serial.println(predictedY);
+  // Serial.print(", Actual Y: ");
+  // Serial.print(dataBackup[dataIndex][1]);
+  // Serial.print(", Paddle Pos: ");
+  // Serial.println(PADDLE_POS);
   predictedY = 300;
   moveToCenter();
 }
@@ -259,21 +259,27 @@ void movePaddle() {
   if ((PLAYER == 0x02 && v_x > 0) || (PLAYER == 0x03 && v_x < 0)) {
     if (predictedY != 300) {
       // Compare predictedY and actualY 
-      Serial.println("Ball goes away from us: " + PLAYER);
-      Serial.print("predictedY: ");
-      Serial.print(predictedY + CENTER_OFFSET_BALL);
-      Serial.print(", actualY: ");
-      Serial.print(y + CENTER_OFFSET_BALL);
-      Serial.print(", paddlePos: ");
-      Serial.println(paddlePos_Offset);
+      // Serial.println("Ball goes away from us: " + PLAYER);
+      // Serial.print("predictedY: ");
+      // Serial.print(predictedY + CENTER_OFFSET_BALL);
+      // Serial.print(", actualY: ");
+      // Serial.print(y + CENTER_OFFSET_BALL);
+      // Serial.print(", paddlePos: ");
+      // Serial.println(paddlePos_Offset);
 
       predictedY = 300;
     }
     moveToCenter();
   } else {
+    
     // Ball goes towards us
     if (predictedY == 300){
-      Serial.println("Ball goes towards us: ");
+      // Serial.println("Ball goes towards us: ");
+      predictBallPosition(x, y, v_x, v_y);
+    }
+    if (PADDLE_POS + CENTER_OFFSET_PADDLE > predictedY - 10 || PADDLE_POS + CENTER_OFFSET_PADDLE < predictedY + 10) {
+      // Serial.print("Paddle is at predicted Y: ");
+      // Serial.println(predictedY);
       predictBallPosition(x, y, v_x, v_y);
     }
     if ((predictedY + CENTER_OFFSET_BALL) > paddlePos_Offset) {
@@ -311,22 +317,22 @@ void moveToCenter() {
 // Predict Ball Position
 void predictBallPosition(int x, int y, int v_x, int v_y) {
   // Print current and previous ball position
-  int prevIndex = (dataIndex - 1 + BACKUP_SIZE) % BACKUP_SIZE;
-  Serial.print("Previous Ball Position: ");
-  Serial.print(dataBackup[prevIndex][0]);
-  Serial.print(", ");
-  Serial.println(dataBackup[prevIndex][1]);
+  //int prevIndex = (dataIndex - 1 + BACKUP_SIZE) % BACKUP_SIZE;
+  // Serial.print("Previous Ball Position: ");
+  // Serial.print(dataBackup[prevIndex][0]);
+  // Serial.print(", ");
+  // Serial.println(dataBackup[prevIndex][1]);
 
-  Serial.print("Current Ball Position: ");
-  Serial.print(x);
-  Serial.print(", ");
-  Serial.println(y);
+  // Serial.print("Current Ball Position: ");
+  // Serial.print(x);
+  // Serial.print(", ");
+  // Serial.println(y);
 
-  // Print velocity
-  Serial.print("Velocity: ");
-  Serial.print(v_x);
-  Serial.print(", ");
-  Serial.println(v_y);
+  // // Print velocity
+  // Serial.print("Velocity: ");
+  // Serial.print(v_x);
+  // Serial.print(", ");
+  // Serial.println(v_y);
 
   // Ensure v_x is not zero to prevent division by zero
   if (v_x == 0) {
@@ -338,20 +344,20 @@ void predictBallPosition(int x, int y, int v_x, int v_y) {
   int timeToReachPaddle = (PLAYER == 0x02) ? (x - PADDLE_WIDTH) / abs(v_x) : (FIELD_WIDTH - PADDLE_WIDTH - x - 2*CENTER_OFFSET_BALL) / abs(v_x);
 
   // Print time to reach paddle
-  Serial.print("Time to reach paddle: ");
-  Serial.println(timeToReachPaddle);
+  // Serial.print("Time to reach paddle: ");
+  // Serial.println(timeToReachPaddle);
 
   // Calculate the predicted Y position based on time and velocity
   int predictedYInt = y + v_y * timeToReachPaddle;
 
   // Print predicted Y position
-  Serial.print("Predicted Y RAW: ");
-  Serial.println(predictedYInt);
+  // Serial.print("Predicted Y RAW: ");
+  // Serial.println(predictedYInt);
 
   // Calculate the number of bounces
   int bounces = predictedYInt < 0 ? 1+ abs(predictedYInt) / FIELD_HEIGHT : predictedYInt / FIELD_HEIGHT;
-  Serial.print("Bounces: ");
-  Serial.println(bounces);
+  // Serial.print("Bounces: ");
+  // Serial.println(bounces);
 
   // Calculate top bounces
   // int topBounces = (bounces+1) / 2;
@@ -365,9 +371,9 @@ void predictBallPosition(int x, int y, int v_x, int v_y) {
   }
 
   predictedY = predictedYInt;
-  Serial.print("Predicted Y: ");
-  Serial.println(predictedY);
-  Serial.println();
-  Serial.println();
+  // Serial.print("Predicted Y: ");
+  // Serial.println(predictedY);
+  // Serial.println();
+  // Serial.println();
   
 }
