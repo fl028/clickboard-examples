@@ -1,20 +1,27 @@
 #include <Arduino.h>
 #include <CAN.h>
 
+// Defines
 #define BACKUP_SIZE 5
 #define CENTER_OFFSET_PADDLE 10
 #define CENTER_OFFSET_BALL 3
+#define FIELD_WIDTH 255
+#define FIELD_HEIGHT 149
+#define PADDLE_HEIGHT 20
+#define PADDLE_WIDTH 5
+#define PADDLE_POS_DEFAULT 65
+
 
 // Variables
-
 // Player 1 = 0x02, Player 2 = 0x03
 long PLAYER = 0x03;
 long OPPONENT = (PLAYER == 0x02) ? 0x03 : 0x02;
 
 // Array of the last 5 received CAN data sets containing x, y, and state
 uint8_t dataBackup[BACKUP_SIZE][2];
-int dataIndex = 0;  // Index to keep track of the current position in the circular buffer
 
+// Index to keep track of the current position in the circular buffer
+int dataIndex = 0;
 
 /* GAME_STATES:
 0 	Game start. This is only sent once to indicate the start of a new game.
@@ -29,12 +36,15 @@ int dataIndex = 0;  // Index to keep track of the current position in the circul
 uint8_t GAME_STATE = 0;
 
 // Paddle Position
-uint8_t PADDLE_POS = 65;
+uint8_t PADDLE_POS = PADDLE_POS_DEFAULT;
 
 // Paddle Postion Opponent
-uint8_t PADDLE_POS_OPPONENT = 65;
+uint8_t PADDLE_POS_OPPONENT = PADDLE_POS_DEFAULT;
 
-// Prototype
+// Predicted Ball Position
+uint16_t predictedY;
+
+// Prototypes
 void onReceiveFunction(int packetSize);
 void sendUpdate(int8_t direction);
 void resetGame();
@@ -43,6 +53,9 @@ void handleScore();
 void movePaddle();
 void resetBuffer();
 void moveToCenter();
+void predictBallPosition(int x, int y, int v_x, int v_y);
+void dumpBuffer();
+void dumpData(uint8_t (&data)[3], int i);
 
 // Setup
 void setup() {
@@ -81,7 +94,6 @@ void onReceiveFunction(int packetSize) {
     if (CAN.packetId() == PLAYER) return;
 
     // Track Paddle Position of Opponent
-    
     if (CAN.packetId() == OPPONENT){
       uint8_t direction = CAN.read();
       if (PADDLE_POS_OPPONENT + direction > 130 || PADDLE_POS_OPPONENT + direction < 0) return;
@@ -91,7 +103,10 @@ void onReceiveFunction(int packetSize) {
       return;
     }
 
-    uint8_t data[3];  // Array to store received data
+    Serial.println();
+
+    // Array to store received data
+    uint8_t data[3];  
 
     // Read the data from the CAN packet
     int i = 0;
@@ -111,20 +126,31 @@ void onReceiveFunction(int packetSize) {
     for (int j = 0; j < 2; j++) {
       dataBackup[dataIndex][j] = data[j];
     }
-    dataIndex = (dataIndex + 1) % BACKUP_SIZE;  // Update the index for circular buffer
-    
-    reactToUpdate();
+    // Update the index for circular buffer
+    dataIndex = (dataIndex + 1) % BACKUP_SIZE;
 
     // Print the received data
-    Serial.print("Data: ");
+    dumpData(data, i);
+    dumpBuffer();
+
+    // React to Update
+    reactToUpdate();
+  }
+}
+
+
+void dumpData(uint8_t (&data)[3], int i) {
+      Serial.print("Data: ");
     for (int j = 0; j < i; j++) {
       Serial.print(data[j], HEX);  // Print data in hexadecimal format
       Serial.print(" ");
     }
     Serial.println();
+}
 
 
-    // Print the content of dataBackup
+void dumpBuffer() {
+  // Print the content of dataBackup
     Serial.println("Data Backup:");
     Serial.print("GAME_STATE: ");
     Serial.print(GAME_STATE, HEX);
@@ -140,13 +166,11 @@ void onReceiveFunction(int packetSize) {
       }
       Serial.println();
     }
-  }
   Serial.println();
 }
 
 // Send Packets
 void sendUpdate(int8_t direction) {
-
   // Check if paddle is in bounds
   if (PADDLE_POS + direction > 130 || PADDLE_POS + direction < 0) {
     return;
@@ -185,72 +209,67 @@ void reactToUpdate() {
 
 // Reset Game
 void resetGame() {
-  Serial.print("Called: ResetGame");
-  PADDLE_POS = 65;
-  PADDLE_POS_OPPONENT = 65;
+  Serial.println("Called: ResetGame");
+  PADDLE_POS = PADDLE_POS_DEFAULT;
+  PADDLE_POS_OPPONENT = PADDLE_POS_DEFAULT;
   GAME_STATE = 0;
 }
 
 // Handle Score
 void handleScore() {
-  Serial.print("Called: HandleScore");
+  Serial.println("Called: HandleScore");
   moveToCenter();
 }
 
 // Move Paddle
 void movePaddle() {
-  Serial.print("Called: MovePaddle");
-  // Calculate Vector
+  Serial.println("Called: MovePaddle");
+  // Calculate Vector components
   int prevIndex = (dataIndex - 1 + BACKUP_SIZE) % BACKUP_SIZE;
-  int v_x =  dataBackup[dataIndex][0] - dataBackup[prevIndex][0]; //v_x > 0 => move right, v_x < 0 => move left
-  //int v_y =  dataBackup[dataIndex][1] - dataBackup[(dataIndex - 1) % BACKUP_SIZE][1];
+  int x = dataBackup[dataIndex][0];
+  int y = dataBackup[dataIndex][1];
+  int v_x =  x - dataBackup[prevIndex][0]; //v_x > 0 => move right, v_x < 0 => move left
+  int v_y =  y - dataBackup[(dataIndex - 1) % BACKUP_SIZE][1]; //v_y > 0 => move up, v_y < 0 => move down
 
   // Output index & prevIndex
-  Serial.print("dataIndex: ");
-  Serial.println(dataIndex);
-  Serial.print("prevIndex: ");
-  Serial.println(prevIndex);
-
-
+  // Serial.print("dataIndex: ");
+  // Serial.print(dataIndex);
+  // Serial.print(", prevIndex: ");
+  // Serial.println(prevIndex);
 
   Serial.print("v_x: ");
-  Serial.println(v_x);
+  Serial.print(v_x);
+  Serial.print(", v_y: ");
+  Serial.println(v_y);
 
-  int y = dataBackup[dataIndex][1] + CENTER_OFFSET_BALL;
-  int paddlePosOffset = PADDLE_POS + CENTER_OFFSET_PADDLE;
+  int paddlePos_Offset = PADDLE_POS + CENTER_OFFSET_PADDLE;
 
   // nach rechts und Player i = Ball geht weg von uns
-  if (PLAYER == 0x02) {
-    if (v_x > 0) {
-      Serial.println("Ball goes away from Player 1");
-      moveToCenter();
-    }
-    else {
-      Serial.println("Ball goes to Player 1");
-      if (y > paddlePosOffset) {
-        sendUpdate(1);
-      }
-      else if (y < paddlePosOffset) {
-        sendUpdate(-1);
-      }
-    }
-  }
-  else{
-    if (v_x < 0) {
-      Serial.println("Ball goes TO US");
-      if (y > paddlePosOffset) {
-        sendUpdate(1);
-      }
-      else if (y < paddlePosOffset) {
-        sendUpdate(-1);
-      }
-    }
-    else {
-      Serial.println("Ball goes AWAY FROM US");
-      moveToCenter();
-    }
-  }
+  if ((PLAYER == 0x02 && v_x < 0) || (PLAYER == 0x03 && v_x > 0)) {
+    if (predictedY != 300) {
+      // Compare predictedY and actualY 
+      Serial.println("Ball goes away from us");
+      Serial.print("predictedY: ");
+      Serial.print(predictedY + CENTER_OFFSET_BALL);
+      Serial.print(", actualY: ");
+      Serial.print(y + CENTER_OFFSET_BALL);
+      Serial.print(", paddlePos: ");
+      Serial.println(paddlePos_Offset);
 
+      predictedY = 300;
+    }
+    moveToCenter();
+  } else {
+    if (predictedY == 300){
+      Serial.println("Ball goes towards us");
+      predictBallPosition(x, y, v_x, v_y);
+    }
+    if ((predictedY + CENTER_OFFSET_BALL) > paddlePos_Offset) {
+      sendUpdate(1);
+    } else if ((predictedY + CENTER_OFFSET_BALL) < paddlePos_Offset) {
+      sendUpdate(-1);
+    }
+  }
 }
 
 
@@ -268,12 +287,35 @@ void resetBuffer() {
 
 // Move to Center
 void moveToCenter() {
-  // Return Paddle to center (65)
-  if (PADDLE_POS > 65) {
+  // Return Paddle to center (PADDLE_POS_DEFAULT)
+  if (PADDLE_POS > PADDLE_POS_DEFAULT) {
     sendUpdate(-1);
   }
-  else if (PADDLE_POS < 65) {
+  else if (PADDLE_POS < PADDLE_POS_DEFAULT) {
     sendUpdate(1);
   }
 }
- 
+
+// Predict Ball Position
+void predictBallPosition(int x, int y, int v_x, int v_y) {
+  // Ensure v_x is not zero to prevent division by zero
+  if (v_x == 0) {
+    predictedY = y;
+    return;
+  }
+
+  // Time to reach our paddle
+  int timeToReachPaddle = (PLAYER == 0x02) ? x / abs(v_x) : (FIELD_WIDTH - PADDLE_WIDTH - x) / abs(v_x);
+
+  // Calculate the predicted Y position based on time and velocity
+  int predictedYInt = y + v_y * timeToReachPaddle;
+
+  // Calculate the number of bounces
+  int bounces = predictedYInt / FIELD_HEIGHT;
+  if (bounces % 2 == 0) {
+    predictedYInt = predictedYInt % FIELD_HEIGHT;
+  } else {
+    predictedYInt = FIELD_HEIGHT - (predictedYInt % FIELD_HEIGHT);
+  }
+  predictedY = predictedYInt;
+}
